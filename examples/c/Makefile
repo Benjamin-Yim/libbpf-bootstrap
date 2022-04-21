@@ -11,11 +11,11 @@ VMLINUX := ../../vmlinux/$(ARCH)/vmlinux.h
 # Use our own libbpf API headers and Linux UAPI headers distributed with
 # libbpf to avoid dependency on system-wide headers, which could be missing or
 # outdated
-INCLUDES := -I$(OUTPUT) -I../../libbpf/include/uapi -I$(dir $(VMLINUX))
+INCLUDES := -I$(OUTPUT) -I../../libbpf/include/uapi -I$(dir $(VMLINUX)) -I/mnt/hgfs/benjamin/Documents/github.com/net-next/tools/bpf/resolve_btfids/libbpf/include -I.
 CFLAGS := -g -Wall
 
-APPS = minimal bootstrap uprobe kprobe fentry
-
+# APPS = minimal bootstrap uprobe kprobe fentry
+APPS = tcptop 
 # Get Clang's default includes on this system. We'll explicitly add these dirs
 # to the includes list when compiling with `-target bpf` because otherwise some
 # architecture-specific dirs will be "missing" on some architectures/distros -
@@ -31,7 +31,7 @@ ifeq ($(V),1)
 	Q =
 	msg =
 else
-	Q = @
+	# Q = @
 	msg = @printf '  %-8s %s%s\n'					\
 		      "$(1)"						\
 		      "$(patsubst $(abspath $(OUTPUT))/%,%,$(2))"	\
@@ -82,8 +82,11 @@ $(OUTPUT)/%.o: %.c $(wildcard %.h) | $(OUTPUT)
 	$(call msg,CC,$@)
 	$(Q)$(CC) $(CFLAGS) $(INCLUDES) -c $(filter %.c,$^) -o $@
 
+map_helpers.o: map_helpers.c
+	$(Q)$(CC) $(CFLAGS) $(INCLUDES) $<
+
 # Build application binary
-$(APPS): %: $(OUTPUT)/%.o $(LIBBPF_OBJ) | $(OUTPUT)
+$(APPS): %: $(OUTPUT)/%.o $(LIBBPF_OBJ) map_helpers.o | $(OUTPUT)
 	$(call msg,BINARY,$@)
 	$(Q)$(CC) $(CFLAGS) $^ -lelf -lz -o $@
 
