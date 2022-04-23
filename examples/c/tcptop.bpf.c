@@ -14,48 +14,48 @@ const volatile pid_t filter_pid = 0;
 const volatile pid_t filter_family = 0;
 
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key,struct ipvx_key_t);
-	__type(value, __u64);
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, MAX_ENTRIES);
+    __type(key,struct ipvx_key_t);
+    __type(value, __u64);
 } ipv4_recv_bytes SEC(".maps");
 
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key,struct ipvx_key_t);
-	__type(value, u64);
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, MAX_ENTRIES);
+    __type(key,struct ipvx_key_t);
+    __type(value, u64);
 } ipv4_send_bytes SEC(".maps");
 
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key,struct ipvx_key_t);
-	__type(value, u64);
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, MAX_ENTRIES);
+    __type(key,struct ipvx_key_t);
+    __type(value, u64);
 } ipv6_recv_bytes SEC(".maps");
 
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key,struct ipvx_key_t);
-	__type(value, u64);
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, MAX_ENTRIES);
+    __type(key,struct ipvx_key_t);
+    __type(value, u64);
 } ipv6_send_bytes SEC(".maps");
 
 static __always_inline void *
 bpf_map_lookup_or_try_init(void *map, const void *key, const void *init)
 {
-	void *val;
-	long err;
+    void *val;
+    long err;
 
-	val = bpf_map_lookup_elem(map, key);
-	if (val)
-		return val;
+    val = bpf_map_lookup_elem(map, key);
+    if (val)
+        return val;
 
-	err = bpf_map_update_elem(map, key, init, BPF_NOEXIST);
-	if (err && err != -EEXIST)
-		return 0;
+    err = bpf_map_update_elem(map, key, init, BPF_NOEXIST);
+    if (err && err != -EEXIST)
+        return 0;
 
-	return bpf_map_lookup_elem(map, key);
+    return bpf_map_lookup_elem(map, key);
 }
 
 SEC("kprobe/tcp_sendmsg")
@@ -81,14 +81,14 @@ int BPF_KPROBE(tcp_sendmsg,
             .pid = pid
         };
         bpf_get_current_comm(&ipv4_key.name, sizeof(ipv4_key.name));
-        BPF_CORE_READ_INTO(&ipv4_key.laddr, sk, __sk_common.skc_rcv_saddr);
+        BPF_CORE_READ_INTO(&ipv4_key.saddr, sk, __sk_common.skc_rcv_saddr);
         ipv4_key.daddr = BPF_CORE_READ(sk, __sk_common.skc_daddr);
         ipv4_key.lport = BPF_CORE_READ(sk, __sk_common.skc_num);
         ipv4_key.dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
         val = bpf_map_lookup_or_try_init(&ipv4_send_bytes,&ipv4_key,&zero);
         if (val) {
             __atomic_add_fetch(val, size, __ATOMIC_RELAXED);
-            bpf_printk("AF_INET %lld\n",ipv4_key.laddr);
+            bpf_printk("AF_INET %lld\n",ipv4_key.saddr);
         }
     } else if(family == AF_INET6)
     {
@@ -96,8 +96,8 @@ int BPF_KPROBE(tcp_sendmsg,
             .pid = pid
         };
         bpf_get_current_comm(&ipv6_key.name, sizeof(ipv6_key.name));
-        BPF_CORE_READ_INTO(&ipv6_key.laddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-        BPF_CORE_READ_INTO(&ipv6_key.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+        BPF_CORE_READ_INTO(&ipv6_key.saddr_v6, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+        BPF_CORE_READ_INTO(&ipv6_key.daddr_v6, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
         BPF_CORE_READ_INTO(&ipv6_key.lport, sk, __sk_common.skc_num);
         BPF_CORE_READ_INTO(&ipv6_key.dport, sk, __sk_common.skc_dport);
         val = bpf_map_lookup_or_try_init(&ipv6_send_bytes,&ipv6_key,&zero);
@@ -136,14 +136,14 @@ int BPF_KPROBE(tcp_cleanup_rbuf,
             .pid = pid
         };
         bpf_get_current_comm(&ipv4_key.name, sizeof(ipv4_key.name));
-        BPF_CORE_READ_INTO(&ipv4_key.laddr, sk, __sk_common.skc_rcv_saddr);
+        BPF_CORE_READ_INTO(&ipv4_key.saddr, sk, __sk_common.skc_rcv_saddr);
         ipv4_key.daddr = BPF_CORE_READ(sk, __sk_common.skc_daddr);
         ipv4_key.lport = BPF_CORE_READ(sk, __sk_common.skc_num);
         ipv4_key.dport = BPF_CORE_READ(sk, __sk_common.skc_dport);
         val = bpf_map_lookup_or_try_init(&ipv4_recv_bytes, &ipv4_key, &zero);
         if (val) {
             __atomic_add_fetch(val, copid, __ATOMIC_RELAXED);
-            bpf_printk("AF_INET %lld\n",ipv4_key.laddr);
+            bpf_printk("AF_INET %lld\n",ipv4_key.saddr);
         }
     } else if(family == AF_INET6)
     {
@@ -151,8 +151,8 @@ int BPF_KPROBE(tcp_cleanup_rbuf,
             .pid = pid
         };
         bpf_get_current_comm(&ipv6_key.name, sizeof(ipv6_key.name));
-        BPF_CORE_READ_INTO(&ipv6_key.laddr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-        BPF_CORE_READ_INTO(&ipv6_key.daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+        BPF_CORE_READ_INTO(&ipv6_key.saddr_v6, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+        BPF_CORE_READ_INTO(&ipv6_key.daddr_v6, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
         BPF_CORE_READ_INTO(&ipv6_key.lport, sk, __sk_common.skc_num);
         BPF_CORE_READ_INTO(&ipv6_key.dport, sk, __sk_common.skc_dport);
         val = bpf_map_lookup_or_try_init(&ipv6_recv_bytes, &ipv6_key, &zero);

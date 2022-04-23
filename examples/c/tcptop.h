@@ -23,8 +23,14 @@
 struct ipvx_key_t {
     __u32 pid;
     char name[TASK_COMM_LEN];
-    __u32 laddr;
-    __u32 daddr;
+    union {
+        __u32 saddr;
+        __u8 saddr_v6[16];
+    };
+    union {
+        __u32 daddr;
+        __u8 daddr_v6[16];
+    };
     __u16 lport;
     __u16 dport;
 };
@@ -33,8 +39,14 @@ struct ipvx_node {
     struct ipvx_node *next;
     __u32 pid;
     char name[TASK_COMM_LEN];
-    __u32 laddr;
-    __u32 daddr;
+    union {
+        __u32 saddr;
+        __u8 saddr_v6[16];
+    };
+    union {
+        __u32 daddr;
+        __u8 daddr_v6[16];
+    };
     __u16 lport;
     __u16 dport;
     __u64 rx;
