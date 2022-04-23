@@ -28,16 +28,9 @@ static struct env {
     bool ebpf;
 } env;
 
-struct tcp_session {
-    __u32 pid;
-    char name[TASK_COMM_LEN];
-    __u32 laddr;
-    __u16 lport;
-    __u32 daddr;
-    __u16 dport;
-};
-static struct ipv4_key_t ipv4_send[MAX_ENTRIES],ipv4_recv[MAX_ENTRIES];
-static struct ipv6_key_t ipv6_send[MAX_ENTRIES],ipv6_recv[MAX_ENTRIES];
+
+static struct ipvx_key_t ipv4_send[MAX_ENTRIES],ipv4_recv[MAX_ENTRIES],
+           ipv6_send[MAX_ENTRIES],ipv6_recv[MAX_ENTRIES];
 static __u64 ipv4_send_count[MAX_ENTRIES],ipv4_recv_count[MAX_ENTRIES],
        ipv6_send_count[MAX_ENTRIES],ipv6_recv_count[MAX_ENTRIES];
 
@@ -128,7 +121,7 @@ static int counts_map_v4(int fd,int send)
 {
     __u32 key_size = sizeof(ipv4_send[0]);
     __u32 value_size = sizeof(__u64);
-    static struct ipv4_key_t zero;
+    static struct ipvx_key_t zero;
     __u32 n = MAX_ENTRIES;
 
     if(send) {
@@ -149,7 +142,7 @@ static int counts_map_v6(int fd,int send)
 {
     __u32 key_size = sizeof(ipv6_send[0]);
     __u32 value_size = sizeof(__u64);
-    static struct ipv6_key_t zero;
+    static struct ipvx_key_t zero;
     __u32 n = MAX_ENTRIES;
 
     if(send) {
@@ -168,10 +161,79 @@ static int counts_map_v6(int fd,int send)
 
 static void clean_ipv4(int map_fd)
 {
-	__u64 val = 0;
+    __u64 val = 0;
     for(int i=0; i< MAX_ENTRIES; i++) {
-		bpf_map_update_elem(map_fd, &ipv4_send[i], &val, BPF_EXIST);
-		bpf_map_update_elem(map_fd, &ipv4_recv[i], &val, BPF_EXIST);
+        bpf_map_update_elem(map_fd, &ipv4_send[i], &val, BPF_EXIST);
+        bpf_map_update_elem(map_fd, &ipv4_recv[i], &val, BPF_EXIST);
+    }
+}
+
+static struct ipvx_node* merge_node(struct ipvx_node* head, struct ipvx_node* tail)
+{
+	struct ipvx_node* tmp = malloc(sizeof(struct ipvx_node));
+	memset(tmp, 0, sizeof(struct ipvx_node));
+	struct ipvx_node *res = tmp, *left =head, *right = tail;
+	while(left != NULL && right != NULL){
+		if(left->tx+left->rx > right->tx + right->rx){
+			res->next = left;
+			left = left->next;
+		} else{
+			res->next = right;
+			right = right->next;
+		}
+		res = res->next;
+	}
+	if(left != NULL){
+		res->next = left;
+	} else if(right != NULL){
+		res->next = right;
+	}
+	return tmp->next;
+}
+// link:https://leetcode-cn.com/problems/sort-list/solution/pai-xu-lian-biao-by-leetcode-solution/
+static struct ipvx_node* sort_node(struct ipvx_node *head, struct ipvx_node *tail) {
+	if(head == NULL){
+		return head;
+	}
+	if(head->next == tail){
+		head->next = NULL;
+		return head;
+	}
+	struct ipvx_node *fast = head, *slow=head;
+	while(fast != tail){
+		fast = fast->next;
+		slow = slow->next;
+		if(fast != tail){
+			fast = fast->next;
+		}
+	}
+	struct ipvx_node *mid = slow;
+	return merge_node(sort_node(head, mid), sort_node(mid,tail));
+}
+
+static void print_node(struct ipvx_node *head,int ipv4) {
+    head = sort_node(head, NULL);
+    while(head) {
+        if(head->pid && ipv4) {
+            char laddr[INET_ADDRSTRLEN];
+            char daddr[INET_ADDRSTRLEN];
+            struct in_addr l4 = {
+                .s_addr = head->laddr
+            };
+            struct in_addr d4 = {
+                .s_addr = head->daddr
+            };
+
+            printf("%-7d\t\t%-12s\t\t%s:%-21d\t\t%s:%-21d\t%-6lld\t%-6lld\n",
+                   head->pid, head->name,
+                   inet_ntop(AF_INET, &l4, laddr, sizeof(laddr)),
+                   head->lport,
+                   inet_ntop(AF_INET, &d4, daddr, sizeof(daddr)),
+                   head->dport,
+                   head->rx, head->tx);
+        }
+
+        head = head->next;
     }
 }
 
@@ -241,43 +303,41 @@ int main(int argc, char **argv)
         sleep(env.interval);
         printf("\e[1;1H\e[2J");
 
-        printf("%-7s\t\t%-12s\t\t%-21s\t\t%-21s\t\t%-6s\t\t%-6s\n",
+        printf("%-7s\t\t%-12s\t\t%-21s\t\t\t\t%-21s\t\t\t%-6s\t%-6s\n",
                "PID", "COMM", "LADDR", "RADDR", "RX_KB", "TX_KB");
         int recv4_fd = bpf_map__fd(skel->maps.ipv4_recv_bytes);
         counts_map_v4(recv4_fd, 0);
         int send4_fd = bpf_map__fd(skel->maps.ipv4_send_bytes);
         counts_map_v4(send4_fd, 1);
+
+        struct ipvx_node *next = (struct ipvx_node*)malloc(sizeof(struct ipvx_node));
+        memset(next, 0, sizeof(struct ipvx_node));
+        struct ipvx_node *tmp = next;
         for(int i=0; i < MAX_ENTRIES; i++)
         {
             if(ipv4_recv_count[i] != 0 ||  ipv4_send_count[i] != 0)
             {
-                char laddr[INET_ADDRSTRLEN];
-                char daddr[INET_ADDRSTRLEN];
-                struct in_addr l4 = {
-                    .s_addr = ipv4_send[i].laddr
-                };
-                struct in_addr d4 = {
-                    .s_addr = ipv4_send[i].daddr
-                };
-
-                printf("%-7d\t\t%-12s\t\t%s:%-21d\t\t%s:%-21d\t\t%-6lld %-6lld\n",
-                       ipv4_send[i].pid, ipv4_send[i].name,
-                       inet_ntop(AF_INET, &l4, laddr, sizeof(laddr)),
-                       ipv4_send[i].lport,
-                       inet_ntop(AF_INET, &d4, daddr, sizeof(daddr)),
-                       ipv4_send[i].dport,
-                       ipv4_recv_count[i], ipv4_send_count[i]);
-
+                next->daddr = ipv4_send[i].daddr;
+                next->dport = ipv4_send[i].dport;
+                next->laddr = ipv4_send[i].laddr;
+                next->lport = ipv4_send[i].lport;
+                memcpy(next->name, ipv4_send[i].name, sizeof(ipv4_send[i].name));
+                next->pid = ipv4_send[i].pid;
+                next->rx = ipv4_recv_count[i];
+                next->tx = ipv4_send_count[i];
+                next->next = (struct ipvx_node*)malloc(sizeof(struct ipvx_node));
+                memset(next->next, 0, sizeof(struct ipvx_node));
+                next = next->next;
             }
         }
-
+        print_node(tmp,1);
         clean_ipv4(recv4_fd);
         clean_ipv4(send4_fd);
 
-		/*
+
         printf("\n\n%-7s %-12s %-32s %-32s %-6s %-6s\n",
                "PID", "COMM", "LADDR", "RADDR", "RX_KB", "TX_KB");
-		*/
+
         int recv6_fd = bpf_map__fd(skel->maps.ipv6_recv_bytes);
         counts_map_v6(recv6_fd, 0);
         int send6_fd = bpf_map__fd(skel->maps.ipv6_send_bytes);
@@ -297,8 +357,6 @@ int main(int argc, char **argv)
                        ipv6_recv_count[i], ipv6_send_count[i]);
             }
         }
-
-
     }
 
 cleanup:

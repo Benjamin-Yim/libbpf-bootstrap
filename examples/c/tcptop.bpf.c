@@ -16,28 +16,28 @@ const volatile pid_t filter_family = 0;
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__uint(max_entries, MAX_ENTRIES);
-	__type(key,struct ipv4_key_t);
+	__type(key,struct ipvx_key_t);
 	__type(value, __u64);
 } ipv4_recv_bytes SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__uint(max_entries, MAX_ENTRIES);
-	__type(key,struct ipv4_key_t);
+	__type(key,struct ipvx_key_t);
 	__type(value, u64);
 } ipv4_send_bytes SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__uint(max_entries, MAX_ENTRIES);
-	__type(key,struct ipv6_key_t);
+	__type(key,struct ipvx_key_t);
 	__type(value, u64);
 } ipv6_recv_bytes SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__uint(max_entries, MAX_ENTRIES);
-	__type(key,struct ipv6_key_t);
+	__type(key,struct ipvx_key_t);
 	__type(value, u64);
 } ipv6_send_bytes SEC(".maps");
 
@@ -77,7 +77,7 @@ int BPF_KPROBE(tcp_sendmsg,
     }
     if(family == AF_INET)
     {
-        struct ipv4_key_t ipv4_key = {
+        struct ipvx_key_t ipv4_key = {
             .pid = pid
         };
         bpf_get_current_comm(&ipv4_key.name, sizeof(ipv4_key.name));
@@ -92,7 +92,7 @@ int BPF_KPROBE(tcp_sendmsg,
         }
     } else if(family == AF_INET6)
     {
-        struct ipv6_key_t ipv6_key = {
+        struct ipvx_key_t ipv6_key = {
             .pid = pid
         };
         bpf_get_current_comm(&ipv6_key.name, sizeof(ipv6_key.name));
@@ -132,7 +132,7 @@ int BPF_KPROBE(tcp_cleanup_rbuf,
     }
     if(family == AF_INET)
     {
-        struct ipv4_key_t ipv4_key = {
+        struct ipvx_key_t ipv4_key = {
             .pid = pid
         };
         bpf_get_current_comm(&ipv4_key.name, sizeof(ipv4_key.name));
@@ -147,7 +147,7 @@ int BPF_KPROBE(tcp_cleanup_rbuf,
         }
     } else if(family == AF_INET6)
     {
-        struct ipv6_key_t ipv6_key = {
+        struct ipvx_key_t ipv6_key = {
             .pid = pid
         };
         bpf_get_current_comm(&ipv6_key.name, sizeof(ipv6_key.name));

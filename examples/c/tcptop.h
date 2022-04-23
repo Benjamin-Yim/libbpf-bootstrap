@@ -20,7 +20,7 @@
 
 #define TASK_COMM_LEN 16
 
-struct ipv4_key_t {
+struct ipvx_key_t {
     __u32 pid;
     char name[TASK_COMM_LEN];
     __u32 laddr;
@@ -28,4 +28,17 @@ struct ipv4_key_t {
     __u16 lport;
     __u16 dport;
 };
+
+struct ipvx_node {
+    struct ipvx_node *next;
+    __u32 pid;
+    char name[TASK_COMM_LEN];
+    __u32 laddr;
+    __u32 daddr;
+    __u16 lport;
+    __u16 dport;
+    __u64 rx;
+    __u64 tx;
+};
+
 #endif
